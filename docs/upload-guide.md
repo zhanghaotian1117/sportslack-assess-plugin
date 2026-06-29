@@ -52,7 +52,7 @@ fetch("./api/exams")
 fetch("/v4/assess/api/exams")
 ```
 
-Worker 会把 `/v4/assess/api/*` 转发到后端 `ASSESS_BACKEND_ORIGIN`。
+Worker 会先向中台 `/api/auth/session` 确认当前账号和 v4 权限，再把 `/v4/assess/api/*` 转发到后端 `ASSESS_BACKEND_ORIGIN`。
 
 ## 原系统自带登录怎么改
 
@@ -107,7 +107,7 @@ x-sportslack-plugin: assess
 - 不要改 Worker 名称：`sportslack-assess`
 - 不要改线上路由：`ai.sportslack.com/v4/assess/*`
 - 不要删除 `AUTH_DB` 绑定
-- 不要删除 `AUTH_SECRET` 鉴权逻辑
+- 不要绕过 Worker 对中台 `/api/auth/session` 的登录权限校验
 - 不要绕过中台登录和账号权限
 - 不要把密钥写进代码或文档
 
