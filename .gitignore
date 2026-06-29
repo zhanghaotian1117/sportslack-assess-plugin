@@ -3,3 +3,9 @@ node_modules/
 .DS_Store
 *.log
 dist-debug/
+backend/node_modules/
+backend/backups/
+backend/exam.db
+backend/exam.db-shm
+backend/exam.db-wal
+backend/.password-vault-key

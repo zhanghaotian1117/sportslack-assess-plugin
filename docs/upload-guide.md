@@ -69,7 +69,7 @@ Worker 会先向中台 `/api/auth/session` 确认当前账号和 v4 权限，再
 
 - 不再依赖原系统自己的登录 cookie/session。
 - 信任 Cloudflare Worker 透传的用户身份头。
-- 用中台角色映射 v4 角色：中台 `admin` 是 v4 平台管理员，中台 `user` 是 v4 考生账号。
+- 用中台角色映射 v4 角色：`admin` 是管理员，`user` 是考生账号。
 - 如果原系统数据库里必须有 user id，可以在首次看到中台账号时自动创建一条本地用户记录，username 使用中台账号名。
 
 Worker 会透传这些身份信息：
@@ -83,7 +83,7 @@ x-sportslack-plugins: 用户可用插件列表 JSON
 x-sportslack-abilities: 当前用户 abilities JSON
 ```
 
-建议 v4 后端把 `x-sportslack-user` 作为唯一登录账号来源，把 `x-sportslack-assess-role=admin` 识别为平台管理员，把 `x-sportslack-assess-role=candidate` 识别为考生。
+建议 v4 后端把 `x-sportslack-user` 作为唯一登录账号来源，把 `x-sportslack-assess-role=admin` 识别为管理员，把 `x-sportslack-assess-role=candidate` 识别为考生。
 
 ## 后端服务
 

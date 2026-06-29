@@ -8,7 +8,7 @@
 2. 路由必须是 `ai.sportslack.com/v4/assess/*`。
 3. v4 Worker 通过中台 `/api/auth/session` 校验登录，不需要单独配置 `AUTH_SECRET`。
 4. 中台 Worker 必须已部署 v4 权限配置，账号管理里能看到 v4 在线考试系统。
-5. 如果有后端，设置 `ASSESS_BACKEND_ORIGIN`。
+5. 后端源码已随包放在 `backend/`，由管理员部署后设置 `ASSESS_BACKEND_ORIGIN`。
 6. `frontend/dist/index.html` 必须存在。
 
 ## 第一次部署
@@ -19,7 +19,13 @@
 npm ci
 ```
 
-如果 v4 有后端：
+后端源码包位置：
+
+```text
+backend/
+```
+
+部署后把后端服务地址写入 Worker 变量：
 
 ```bash
 npx wrangler secret put ASSESS_BACKEND_ORIGIN

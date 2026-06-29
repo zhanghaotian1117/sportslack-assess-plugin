@@ -5,43 +5,12 @@ const INDEX_HTML = `<!doctype html>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>v4 在线考试系统 | Sportslack</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <title>在线考试系统</title>
+    <script type="module" crossorigin src="/v4/assess/assets/index-LmbtwcHE.js"></script>
+    <link rel="stylesheet" crossorigin href="/v4/assess/assets/index-BhCOYPkP.css">
   </head>
-  <body>
-    <main class="shell">
-      <header class="topbar">
-        <div>
-          <p>Sportslack v4</p>
-          <h1>在线考试系统</h1>
-        </div>
-        <a href="/" class="center-link">返回智能插件中台</a>
-      </header>
-      <section class="hero">
-        <div class="copy">
-          <span class="eyebrow">ASSESSMENT WORKBENCH</span>
-          <h2>v4 路由和权限已经预留完成。</h2>
-          <p>
-            同事上传正式考试系统代码后，请将前端构建产物输出到
-            <code>frontend/dist</code>，线上入口保持
-            <code>https://ai.sportslack.com/v4/assess/</code>。
-          </p>
-          <div class="actions">
-            <a href="./api/health">查看健康检查</a>
-          </div>
-        </div>
-        <div class="panel" aria-hidden="true">
-          <div class="screen-line"></div>
-          <div class="screen-grid">
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
-          <div class="score-ring">AI</div>
-        </div>
-      </section>
-    </main>
+  <body class="min-h-screen bg-background font-sans antialiased">
+    <div id="root"></div>
   </body>
 </html>
 `;
@@ -90,6 +59,32 @@ function assessRoleForSession(session) {
   return session?.role === "admin" ? "admin" : "candidate";
 }
 
+function assessUserForSession(session) {
+  if (!session?.sub) return null;
+  return {
+    username: session.sub,
+    name: session.name || session.sub,
+    role: session.role || "user",
+    assessRole: assessRoleForSession(session),
+    isAdmin: session.role === "admin",
+    plugins: session.plugins || [],
+    abilities: session.abilities || {},
+  };
+}
+
+function assessUserForCenterUser(user) {
+  if (!user?.username) return null;
+  return {
+    username: user.username,
+    name: user.name || user.username,
+    role: user.role || "user",
+    assessRole: user.role === "admin" ? "admin" : "candidate",
+    isAdmin: user.role === "admin",
+    plugins: Array.isArray(user.plugins) ? user.plugins : [],
+    abilities: user.abilities || {},
+  };
+}
+
 function redirectToLogin(request) {
   const url = new URL(request.url);
   const next = url.pathname + url.search;
@@ -108,7 +103,19 @@ function forbidden(message = "当前账号没有权限访问此功能。") {
 
 async function requirePlugin(request, env, plugin, ability = null) {
   const session = await currentSession(request, env);
-  if (!session) return { response: redirectToLogin(request), session: null };
+  if (!session) {
+    const url = new URL(request.url);
+    if (url.pathname.startsWith(`${MOUNT_PATH}/api/`)) {
+      return {
+        response: Response.json(
+          { error: "Unauthenticated" },
+          { status: 401, headers: { "cache-control": "no-store" } },
+        ),
+        session: null,
+      };
+    }
+    return { response: redirectToLogin(request), session: null };
+  }
   if (!hasPlugin(session, plugin) || !hasAbility(session, plugin, ability)) {
     return { response: forbidden(), session };
   }
@@ -132,6 +139,96 @@ function backendBaseUrl(env) {
 function stripMountPath(pathname) {
   const suffix = pathname.slice(MOUNT_PATH.length);
   return suffix || "/";
+}
+
+async function fetchCenter(request, env, path, options = {}) {
+  const url = new URL(request.url);
+  const target = new URL(path, url.origin);
+  const method = options.method || request.method;
+  const headers = new Headers(request.headers);
+  headers.set("accept", "application/json");
+  for (const [key, value] of Object.entries(options.headers || {})) {
+    headers.set(key, value);
+  }
+
+  const init = {
+    method,
+    headers,
+    redirect: "manual",
+  };
+  if (!["GET", "HEAD"].includes(method)) {
+    init.body = options.body === undefined ? request.body : options.body;
+  }
+
+  const centerRequest = new Request(target.toString(), init);
+  return env.PLUGIN_CENTER?.fetch
+    ? env.PLUGIN_CENTER.fetch(centerRequest)
+    : fetch(centerRequest);
+}
+
+async function centerJsonResponse(response, transform = null) {
+  const headers = new Headers(response.headers);
+  headers.set("cache-control", "no-store");
+  headers.set("content-type", "application/json; charset=utf-8");
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+  const data = await response.json().catch(() => null);
+  const body = transform ? transform(data) : data;
+  return new Response(JSON.stringify(body || {}), {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+async function handleAuthCompatibility(request, env) {
+  const url = new URL(request.url);
+  const path = url.pathname;
+
+  if (path === `${MOUNT_PATH}/api/auth/login`) {
+    if (request.method !== "POST") {
+      return json({ error: "Method not allowed" }, { status: 405 });
+    }
+    const response = await fetchCenter(request, env, "/api/auth/login");
+    return centerJsonResponse(response, (data) => ({
+      ...(data || {}),
+      token: data?.ok ? "sportslack-center-session" : undefined,
+      user: assessUserForCenterUser(data?.user) || data?.user,
+    }));
+  }
+
+  if (path === `${MOUNT_PATH}/api/auth/logout`) {
+    if (request.method !== "POST") {
+      return json({ error: "Method not allowed" }, { status: 405 });
+    }
+    return fetchCenter(request, env, "/api/auth/logout");
+  }
+
+  if (path === `${MOUNT_PATH}/api/auth/me` || path === `${MOUNT_PATH}/api/auth/session`) {
+    if (request.method !== "GET") {
+      return json({ error: "Method not allowed" }, { status: 405 });
+    }
+    const session = await currentSession(request, env);
+    if (!session) return json({ error: "Unauthenticated" }, { status: 401 });
+    const user = assessUserForSession(session);
+    return path.endsWith("/session") ? json({ ok: true, user }) : json(user);
+  }
+
+  if (path === `${MOUNT_PATH}/api/auth/password`) {
+    if (request.method === "GET") {
+      return json(
+        { error: "线上版本不提供查看明文密码，请在中台账号管理中修改密码。" },
+        { status: 403 },
+      );
+    }
+    if (request.method === "PUT") {
+      const response = await fetchCenter(request, env, "/api/me/password");
+      return centerJsonResponse(response);
+    }
+    return json({ error: "Method not allowed" }, { status: 405 });
+  }
+
+  return null;
 }
 
 function abilityForAssess(pathname, method) {
@@ -218,8 +315,7 @@ async function serveAsset(request, env) {
   const assetUrl = new URL(request.url);
   assetUrl.pathname = stripMountPath(requestUrl.pathname);
   const accept = request.headers.get("accept") || "";
-  const strippedPath = assetUrl.pathname;
-  const looksLikeHtmlRoute = accept.includes("text/html") && !/\.[^/]+$/.test(strippedPath);
+  const looksLikeHtmlRoute = accept.includes("text/html") && !/\.[^/]+$/.test(assetUrl.pathname);
   if (looksLikeHtmlRoute) {
     return new Response(INDEX_HTML, {
       headers: {
@@ -228,9 +324,8 @@ async function serveAsset(request, env) {
       },
     });
   }
-  const response = looksLikeHtmlRoute
-    ? await env.ASSETS.fetch(new Request(new URL("/index.html", assetUrl.origin).toString(), request))
-    : await env.ASSETS.fetch(new Request(assetUrl.toString(), request));
+
+  const response = await env.ASSETS.fetch(new Request(assetUrl.toString(), request));
   const finalResponse = response.status === 404 && accept.includes("text/html")
     ? await env.ASSETS.fetch(new Request(new URL("/index.html", assetUrl.origin).toString(), request))
     : response;
@@ -255,6 +350,12 @@ export default {
       return Response.redirect(next.toString(), 302);
     }
 
+    if (url.pathname === `${MOUNT_PATH}/login` || url.pathname.startsWith(`${MOUNT_PATH}/login/`)) {
+      const login = new URL("/login", url.origin);
+      login.searchParams.set("next", `${MOUNT_PATH}/`);
+      return Response.redirect(login.toString(), 302);
+    }
+
     if (url.pathname === `${MOUNT_PATH}/api/health`) {
       return json({
         ok: true,
@@ -266,24 +367,16 @@ export default {
       });
     }
 
+    const authCompatibility = await handleAuthCompatibility(request, env);
+    if (authCompatibility) return authCompatibility;
+
     if (url.pathname === `${MOUNT_PATH}/` || url.pathname.startsWith(`${MOUNT_PATH}/`)) {
       const gate = await requirePlugin(request, env, PLUGIN_KEY, abilityForAssess(url.pathname, request.method));
       if (gate.response) return gate.response;
 
       if (url.pathname.startsWith(`${MOUNT_PATH}/api/`)) {
         if (url.pathname === `${MOUNT_PATH}/api/auth/session`) {
-          return json({
-            ok: true,
-            user: {
-              username: gate.session?.sub,
-              name: gate.session?.name,
-              role: gate.session?.role || "user",
-              assessRole: assessRoleForSession(gate.session),
-              isAdmin: gate.session?.role === "admin",
-              plugins: gate.session?.plugins || [],
-              abilities: gate.session?.abilities || {},
-            },
-          });
+          return json({ ok: true, user: assessUserForSession(gate.session) });
         }
         return proxyToBackend(request, env, gate.session);
       }

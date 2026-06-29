@@ -18,7 +18,8 @@ https://ai.sportslack.com/v4/assess/
 ## 目录说明
 
 - `src/worker.js`：Cloudflare Worker，负责路由、调用中台会话接口校验登录权限、静态资源和后端代理。
-- `frontend/dist/`：前端构建输出目录。现在放了占位页，正式开发后用真实构建产物替换。
+- `frontend/dist/`：正式在线考试系统前端构建产物。
+- `backend/`：正式在线考试系统后端源码包，由管理员部署到服务器后配置 `ASSESS_BACKEND_ORIGIN`。
 - `docs/upload-guide.md`：给开发同事的上传说明。
 - `docs/owner-deploy.md`：管理员部署说明。
 - `scripts/deploy.sh`：管理员部署脚本。
@@ -27,10 +28,11 @@ https://ai.sportslack.com/v4/assess/
 ## 同事开发流程
 
 1. 把在线考试系统前端构建结果放到 `frontend/dist`。
-2. 如果有后端服务，确保接口能被 Worker 通过 `ASSESS_BACKEND_ORIGIN` 访问。
-3. 前端请求接口时使用相对路径，例如 `/v4/assess/api/exams` 或 `./api/exams`。
-4. 不要修改 `wrangler.jsonc` 里的 Worker 名称、路由、D1 绑定。
-5. 提交 Pull Request，由管理员审核后部署。
+2. 把后端完整源码包放到 `backend/`，由管理员部署到服务器。
+3. 后端部署完成后，管理员把服务地址配置到 `ASSESS_BACKEND_ORIGIN`。
+4. 前端请求接口时使用相对路径，例如 `/v4/assess/api/exams` 或 `./api/exams`。
+5. 不要修改 `wrangler.jsonc` 里的 Worker 名称、路由、D1 绑定。
+6. 提交 Pull Request，由管理员审核后部署。
 
 ## 权限能力
 
