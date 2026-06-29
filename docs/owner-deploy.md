@@ -6,8 +6,8 @@
 
 1. `wrangler.jsonc` 里的 Worker 名称必须是 `sportslack-assess`。
 2. 路由必须是 `ai.sportslack.com/v4/assess/*`。
-3. 必须保留 D1 绑定：`AUTH_DB -> sportslack-auth`。
-4. 必须保留和中台一致的 `AUTH_SECRET`。
+3. v4 Worker 通过中台 `/api/auth/session` 校验登录，不需要单独配置 `AUTH_SECRET`。
+4. 中台 Worker 必须已部署 v4 权限配置，账号管理里能看到 v4 在线考试系统。
 5. 如果有后端，设置 `ASSESS_BACKEND_ORIGIN`。
 6. `frontend/dist/index.html` 必须存在。
 
@@ -17,12 +17,6 @@
 
 ```bash
 npm ci
-```
-
-设置密钥：
-
-```bash
-npx wrangler secret put AUTH_SECRET
 ```
 
 如果 v4 有后端：
