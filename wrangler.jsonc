@@ -22,6 +22,12 @@
       "database_id": "1760d17c-d7cb-4180-8ac4-0b10b35c30e8"
     }
   ],
+  "services": [
+    {
+      "binding": "PLUGIN_CENTER",
+      "service": "sportslack-plugin-center"
+    }
+  ],
   "vars": {
     "ASSESS_BACKEND_ORIGIN": ""
   },

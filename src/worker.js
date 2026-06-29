@@ -1,16 +1,64 @@
 const MOUNT_PATH = "/v4/assess";
 const PLUGIN_KEY = "assess";
+const INDEX_HTML = `<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>v4 在线考试系统 | Sportslack</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p>Sportslack v4</p>
+          <h1>在线考试系统</h1>
+        </div>
+        <a href="/" class="center-link">返回智能插件中台</a>
+      </header>
+      <section class="hero">
+        <div class="copy">
+          <span class="eyebrow">ASSESSMENT WORKBENCH</span>
+          <h2>v4 路由和权限已经预留完成。</h2>
+          <p>
+            同事上传正式考试系统代码后，请将前端构建产物输出到
+            <code>frontend/dist</code>，线上入口保持
+            <code>https://ai.sportslack.com/v4/assess/</code>。
+          </p>
+          <div class="actions">
+            <a href="./api/health">查看健康检查</a>
+          </div>
+        </div>
+        <div class="panel" aria-hidden="true">
+          <div class="screen-line"></div>
+          <div class="screen-grid">
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div class="score-ring">AI</div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
+`;
 
 async function currentSession(request, env) {
   const url = new URL(request.url);
   const sessionUrl = new URL("/api/auth/session", url.origin);
   try {
-    const response = await fetch(sessionUrl.toString(), {
+    const sessionRequest = new Request(sessionUrl.toString(), {
       headers: {
         cookie: request.headers.get("cookie") || "",
         accept: "application/json",
       },
     });
+    const response = env.PLUGIN_CENTER?.fetch
+      ? await env.PLUGIN_CENTER.fetch(sessionRequest)
+      : await fetch(sessionRequest);
     if (!response.ok) return null;
     const data = await response.json();
     const user = data?.user;
@@ -83,10 +131,26 @@ function stripMountPath(pathname) {
 }
 
 function abilityForAssess(pathname, method) {
-  if (method !== "GET") return "manage";
-  if (pathname.startsWith(`${MOUNT_PATH}/api/admin`) || pathname.startsWith(`${MOUNT_PATH}/api/import`)) return "manage";
-  if (pathname.startsWith(`${MOUNT_PATH}/api/result`) || pathname.startsWith(`${MOUNT_PATH}/api/report`)) return "grade";
-  if (pathname.startsWith(`${MOUNT_PATH}/api/exam`) || pathname.startsWith(`${MOUNT_PATH}/api/question`)) return "take";
+  const apiPath = pathname.startsWith(`${MOUNT_PATH}/api`)
+    ? pathname.slice(`${MOUNT_PATH}/api`.length) || "/"
+    : pathname;
+
+  if (method !== "GET") {
+    if (method === "POST" && apiPath === "/questions/batch") return "take";
+    if (apiPath.startsWith("/results") || apiPath.startsWith("/reexam")) return "take";
+    if (apiPath.startsWith("/exam-approvals") && method === "POST") return "take";
+    if (apiPath.startsWith("/mistakes")) return "take";
+    if (apiPath.startsWith("/gradings") || apiPath.startsWith("/grading")) return "grade";
+    return "manage";
+  }
+
+  if (apiPath.startsWith("/admin") || apiPath.startsWith("/users")) return "manage";
+  if (apiPath.startsWith("/categories") || apiPath.startsWith("/tags")) return "manage";
+  if (apiPath.startsWith("/questions/export") || apiPath.startsWith("/questions/import")) return "manage";
+  if (apiPath.startsWith("/results") || apiPath.startsWith("/report")) return "grade";
+  if (apiPath.startsWith("/gradings") || apiPath.startsWith("/grading")) return "grade";
+  if (apiPath.startsWith("/exam") || apiPath.startsWith("/question")) return "take";
+  if (apiPath.startsWith("/practice") || apiPath.startsWith("/mistakes")) return "take";
   return "view";
 }
 
@@ -137,13 +201,40 @@ async function proxyToBackend(request, env, session) {
 }
 
 async function serveAsset(request, env) {
-  const response = await env.ASSETS.fetch(request);
-  const headers = new Headers(response.headers);
+  if (!["GET", "HEAD"].includes(request.method)) {
+    return new Response("Method not allowed", {
+      status: 405,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+  }
+
+  const requestUrl = new URL(request.url);
+  const assetUrl = new URL(request.url);
+  assetUrl.pathname = stripMountPath(requestUrl.pathname);
+  const accept = request.headers.get("accept") || "";
+  const strippedPath = assetUrl.pathname;
+  const looksLikeHtmlRoute = accept.includes("text/html") && !/\.[^/]+$/.test(strippedPath);
+  if (looksLikeHtmlRoute) {
+    return new Response(INDEX_HTML, {
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      },
+    });
+  }
+  const response = looksLikeHtmlRoute
+    ? await env.ASSETS.fetch(new Request(new URL("/index.html", assetUrl.origin).toString(), request))
+    : await env.ASSETS.fetch(new Request(assetUrl.toString(), request));
+  const finalResponse = response.status === 404 && accept.includes("text/html")
+    ? await env.ASSETS.fetch(new Request(new URL("/index.html", assetUrl.origin).toString(), request))
+    : response;
+
+  const headers = new Headers(finalResponse.headers);
   const contentType = headers.get("content-type") || "";
   if (contentType.includes("text/html")) headers.set("cache-control", "no-store");
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
+  return new Response(finalResponse.body, {
+    status: finalResponse.status,
+    statusText: finalResponse.statusText,
     headers,
   });
 }
