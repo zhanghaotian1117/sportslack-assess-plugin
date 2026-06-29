@@ -1,0 +1,14 @@
+{
+  "name": "sportslack-assess-plugin",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Sportslack v4 online assessment plugin for ai.sportslack.com/v4/assess/",
+  "scripts": {
+    "check": "node --check src/worker.js",
+    "build": "echo \"No frontend build configured yet. Put built files in frontend/dist.\"",
+    "deploy": "wrangler deploy --keep-vars"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
