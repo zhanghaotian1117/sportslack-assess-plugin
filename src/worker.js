@@ -1,5 +1,6 @@
 const MOUNT_PATH = "/v4/assess";
 const PLUGIN_KEY = "assess";
+const CANONICAL_HOST = "ai.sportslack.com";
 const INDEX_HTML = `<!doctype html>
 <html lang="zh-CN">
   <head>
@@ -88,7 +89,16 @@ function assessUserForCenterUser(user) {
 function redirectToLogin(request) {
   const url = new URL(request.url);
   const next = url.pathname + url.search;
-  return Response.redirect(url.origin + "/login?next=" + encodeURIComponent(next), 302);
+  return Response.redirect(`https://${CANONICAL_HOST}/login?next=` + encodeURIComponent(next), 302);
+}
+
+function redirectToCanonicalHost(url) {
+  if (url.hostname === CANONICAL_HOST) return null;
+  if (url.hostname !== "sportslack.com" && url.hostname !== "www.sportslack.com") return null;
+  const canonical = new URL(url.toString());
+  canonical.protocol = "https:";
+  canonical.hostname = CANONICAL_HOST;
+  return Response.redirect(canonical.toString(), 301);
 }
 
 function forbidden(message = "当前账号没有权限访问此功能。") {
@@ -343,6 +353,8 @@ async function serveAsset(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const canonicalRedirect = redirectToCanonicalHost(url);
+    if (canonicalRedirect) return canonicalRedirect;
 
     if (url.pathname === MOUNT_PATH) {
       const next = new URL(url);

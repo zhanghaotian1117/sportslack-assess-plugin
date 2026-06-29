@@ -13,6 +13,26 @@
     {
       "pattern": "ai.sportslack.com/v4/assess/*",
       "zone_name": "sportslack.com"
+    },
+    {
+      "pattern": "ai.sportslack.com/v4/assess",
+      "zone_name": "sportslack.com"
+    },
+    {
+      "pattern": "sportslack.com/v4/assess/*",
+      "zone_name": "sportslack.com"
+    },
+    {
+      "pattern": "sportslack.com/v4/assess",
+      "zone_name": "sportslack.com"
+    },
+    {
+      "pattern": "www.sportslack.com/v4/assess/*",
+      "zone_name": "sportslack.com"
+    },
+    {
+      "pattern": "www.sportslack.com/v4/assess",
+      "zone_name": "sportslack.com"
     }
   ],
   "d1_databases": [
@@ -29,7 +49,7 @@
     }
   ],
   "vars": {
-    "ASSESS_BACKEND_ORIGIN": ""
+    "ASSESS_BACKEND_ORIGIN": "https://v4-assess-backend.sportslack.com"
   },
   "observability": {
     "enabled": true

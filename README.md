@@ -10,10 +10,11 @@ https://ai.sportslack.com/v4/assess/
 
 - Worker 名称：`sportslack-assess`
 - Cloudflare 路由：`ai.sportslack.com/v4/assess/*`
+- 旧域名兼容：`sportslack.com/v4/assess*` 和 `www.sportslack.com/v4/assess*` 只做 301 跳转到 `ai.sportslack.com`
 - 插件权限 key：`assess`
 - 健康检查：`https://ai.sportslack.com/v4/assess/api/health`
 - 前端静态输出目录：`frontend/dist`
-- 后端代理变量：`ASSESS_BACKEND_ORIGIN`
+- 后端代理变量：`ASSESS_BACKEND_ORIGIN=https://v4-assess-backend.sportslack.com`
 
 ## 目录说明
 
