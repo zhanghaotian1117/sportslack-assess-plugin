@@ -17,7 +17,7 @@ https://ai.sportslack.com/v4/assess/
 
 ## 目录说明
 
-- `src/worker.js`：Cloudflare Worker，负责路由、登录校验、权限校验、静态资源和后端代理。
+- `src/worker.js`：Cloudflare Worker，负责路由、调用中台会话接口校验登录权限、静态资源和后端代理。
 - `frontend/dist/`：前端构建输出目录。现在放了占位页，正式开发后用真实构建产物替换。
 - `docs/upload-guide.md`：给开发同事的上传说明。
 - `docs/owner-deploy.md`：管理员部署说明。
@@ -66,3 +66,13 @@ Worker 当前按请求粗略映射能力：
    - `manage`：题库、考试、用户、导入等管理操作
 
 同事需要删除或旁路原系统的注册、登录、退出、改密入口。账号创建、删除、禁用、改密统一在智能插件中台的账号管理里完成。
+
+## 线上鉴权方式
+
+v4 Worker 不单独保存中台登录密钥。它会携带浏览器 cookie 调用同域中台接口：
+
+```text
+GET /api/auth/session
+```
+
+由中台返回当前账号、角色、插件权限和 abilities。这样新增 v4 Worker 时不需要额外同步 `AUTH_SECRET`，但必须保证中台 Worker 已部署并包含 v4 权限配置。
