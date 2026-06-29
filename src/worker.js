@@ -7,7 +7,7 @@ const INDEX_HTML = `<!doctype html>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>在线考试系统</title>
-    <script type="module" crossorigin src="/v4/assess/assets/index-LmbtwcHE.js"></script>
+    <script type="module" crossorigin src="/v4/assess/assets/index-v4-authfix-20260629.js"></script>
     <link rel="stylesheet" crossorigin href="/v4/assess/assets/index-BhCOYPkP.css">
   </head>
   <body class="min-h-screen bg-background font-sans antialiased">
@@ -149,6 +149,12 @@ function backendBaseUrl(env) {
 function stripMountPath(pathname) {
   const suffix = pathname.slice(MOUNT_PATH.length);
   return suffix || "/";
+}
+
+function isStaticAssetPath(pathname) {
+  return pathname.startsWith(`${MOUNT_PATH}/`)
+    && !pathname.startsWith(`${MOUNT_PATH}/api/`)
+    && /\.[a-zA-Z0-9]+$/.test(pathname);
 }
 
 async function fetchCenter(request, env, path, options = {}) {
@@ -383,6 +389,10 @@ export default {
     if (authCompatibility) return authCompatibility;
 
     if (url.pathname === `${MOUNT_PATH}/` || url.pathname.startsWith(`${MOUNT_PATH}/`)) {
+      if (isStaticAssetPath(url.pathname)) {
+        return serveAsset(request, env);
+      }
+
       const gate = await requirePlugin(request, env, PLUGIN_KEY, abilityForAssess(url.pathname, request.method));
       if (gate.response) return gate.response;
 
