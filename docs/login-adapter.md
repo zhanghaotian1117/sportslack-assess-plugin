@@ -13,7 +13,7 @@ v4 在线考试系统原本如果有自己的管理员账号、普通账号和�
 
 ```mermaid
 flowchart LR
-  A["用户访问 /v4/assess/"] --> B["Cloudflare Worker 检查 sl_auth"]
+  A["用户访问 /v4/assess/"] --> B["v4 Worker 调用中台 /api/auth/session"]
   B -->|未登录| C["跳转 /login?next=/v4/assess/"]
   B -->|已登录且有 assess 权限| D["进入 v4 前端"]
   D --> E["v4 API 请求 /v4/assess/api/*"]
