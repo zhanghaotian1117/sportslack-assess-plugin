@@ -54,6 +54,35 @@ fetch("/v4/assess/api/exams")
 
 Worker 会把 `/v4/assess/api/*` 转发到后端 `ASSESS_BACKEND_ORIGIN`。
 
+## 原系统自带登录怎么改
+
+如果你的在线考试系统本身已经有登录页和账号体系，请不要让线上 v4 再使用这套登录入口。线上统一使用智能插件中台账号。
+
+前端需要调整：
+
+- 进入 `/v4/assess/` 时，不展示原来的登录页。
+- 如果接口返回未登录，不跳转 v4 自己的 `/login`，而是跳转 `/login?next=/v4/assess/`。
+- 退出登录按钮调用中台 `/api/auth/logout`，然后跳转 `/login`。
+- 修改密码、创建账号、删除账号等入口不要放在 v4 内，统一去中台账号管理。
+
+后端需要调整：
+
+- 不再依赖原系统自己的登录 cookie/session。
+- 信任 Cloudflare Worker 透传的用户身份头。
+- 用中台角色映射 v4 角色：`admin` 是管理员，`user` 是普通账号。
+- 如果原系统数据库里必须有 user id，可以在首次看到中台账号时自动创建一条本地用户记录，username 使用中台账号名。
+
+Worker 会透传这些身份信息：
+
+```text
+x-sportslack-user: 当前登录账号
+x-sportslack-role: admin 或 user
+x-sportslack-plugins: 用户可用插件列表 JSON
+x-sportslack-abilities: 当前用户 abilities JSON
+```
+
+建议 v4 后端把 `x-sportslack-user` 作为唯一登录账号来源。
+
 ## 后端服务
 
 如果 v4 有独立后端，请提供给管理员：

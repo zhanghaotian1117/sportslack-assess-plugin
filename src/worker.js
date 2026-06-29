@@ -125,7 +125,7 @@ function abilityForAssess(pathname, method) {
   return "view";
 }
 
-async function proxyToBackend(request, env) {
+async function proxyToBackend(request, env, session) {
   const baseUrl = backendBaseUrl(env);
   if (!baseUrl) {
     return json(
@@ -148,6 +148,10 @@ async function proxyToBackend(request, env) {
   headers.set("x-forwarded-proto", url.protocol.replace(":", ""));
   headers.set("x-forwarded-prefix", MOUNT_PATH);
   headers.set("x-sportslack-plugin", PLUGIN_KEY);
+  headers.set("x-sportslack-user", String(session?.sub || ""));
+  headers.set("x-sportslack-role", String(session?.role || "user"));
+  headers.set("x-sportslack-plugins", JSON.stringify(session?.plugins || []));
+  headers.set("x-sportslack-abilities", JSON.stringify(session?.abilities || {}));
 
   const init = {
     method: request.method,
@@ -205,7 +209,19 @@ export default {
       if (gate.response) return gate.response;
 
       if (url.pathname.startsWith(`${MOUNT_PATH}/api/`)) {
-        return proxyToBackend(request, env);
+        if (url.pathname === `${MOUNT_PATH}/api/auth/session`) {
+          return json({
+            ok: true,
+            user: {
+              username: gate.session?.sub,
+              name: gate.session?.name,
+              role: gate.session?.role || "user",
+              plugins: gate.session?.plugins || [],
+              abilities: gate.session?.abilities || {},
+            },
+          });
+        }
+        return proxyToBackend(request, env, gate.session);
       }
 
       return serveAsset(request, env);
