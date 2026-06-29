@@ -1,64 +1,29 @@
-const SESSION_COOKIE = "sl_auth";
 const MOUNT_PATH = "/v4/assess";
 const PLUGIN_KEY = "assess";
 
-function parseCookies(header = "") {
-  const out = {};
-  for (const part of String(header || "").split(";")) {
-    const index = part.indexOf("=");
-    if (index <= 0) continue;
-    out[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim());
-  }
-  return out;
-}
-
-function base64url(bytes) {
-  let binary = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-function decodeJson(value) {
-  const padded = value.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((value.length + 3) % 4);
-  const binary = atob(padded);
-  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
-  return JSON.parse(new TextDecoder().decode(bytes));
-}
-
-async function hmac(secret, data) {
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
-  return base64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data))));
-}
-
-function authSecret(env) {
-  const secret = String(env.AUTH_SECRET || "").trim();
-  if (!secret) throw new Error("AUTH_SECRET is not configured");
-  return secret;
-}
-
-async function verifySessionToken(token, env) {
-  if (!token || !token.includes(".")) return null;
-  const [body, sig] = token.split(".");
-  const expected = await hmac(authSecret(env), body);
-  if (sig !== expected) return null;
-  const payload = decodeJson(body);
-  if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return null;
-  return payload;
-}
-
 async function currentSession(request, env) {
-  const cookies = parseCookies(request.headers.get("cookie") || "");
+  const url = new URL(request.url);
+  const sessionUrl = new URL("/api/auth/session", url.origin);
   try {
-    const session = await verifySessionToken(cookies[SESSION_COOKIE], env);
-    if (!session) return null;
-    if (env.AUTH_DB) {
-      const account = await env.AUTH_DB.prepare("SELECT username, status, session_version FROM users WHERE username = ?")
-        .bind(String(session.sub || "").toLowerCase())
-        .first();
-      if (!account || account.status !== "active") return null;
-      if (Number(session.sessionVersion || 0) !== Number(account.session_version || 0)) return null;
-    }
-    return session;
+    const response = await fetch(sessionUrl.toString(), {
+      headers: {
+        cookie: request.headers.get("cookie") || "",
+        accept: "application/json",
+      },
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const user = data?.user;
+    if (!user?.username) return null;
+    return {
+      sub: user.username,
+      name: user.name || user.username,
+      role: user.role || "user",
+      plugins: Array.isArray(user.plugins) ? user.plugins : [],
+      abilities: user.abilities || {},
+      sessionVersion: user.sessionVersion || 0,
+      expiresAt: user.expiresAt,
+    };
   } catch {
     return null;
   }
