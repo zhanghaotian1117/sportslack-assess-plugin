@@ -73,9 +73,18 @@ const isAdmin = role === "admin";
 ## 权限映射
 
 ```text
-中台 role=admin -> v4 管理员
-中台 role=user  -> v4 普通账号
+中台 role=admin -> v4 平台管理员
+中台 role=user  -> v4 考生账号
 ```
+
+Worker 会额外给后端透传更贴近考试系统的字段：
+
+```text
+x-sportslack-assess-role: admin 或 candidate
+x-sportslack-is-admin: true 或 false
+```
+
+后端可以优先读取 `x-sportslack-assess-role`，不用自己再做二次映射。
 
 更细能力：
 

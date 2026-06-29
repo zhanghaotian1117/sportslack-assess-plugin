@@ -86,6 +86,10 @@ function hasAbility(session, plugin, ability) {
   return Boolean(session?.abilities?.[plugin]?.includes(ability));
 }
 
+function assessRoleForSession(session) {
+  return session?.role === "admin" ? "admin" : "candidate";
+}
+
 function redirectToLogin(request) {
   const url = new URL(request.url);
   const next = url.pathname + url.search;
@@ -179,6 +183,8 @@ async function proxyToBackend(request, env, session) {
   headers.set("x-sportslack-plugin", PLUGIN_KEY);
   headers.set("x-sportslack-user", String(session?.sub || ""));
   headers.set("x-sportslack-role", String(session?.role || "user"));
+  headers.set("x-sportslack-assess-role", assessRoleForSession(session));
+  headers.set("x-sportslack-is-admin", session?.role === "admin" ? "true" : "false");
   headers.set("x-sportslack-plugins", JSON.stringify(session?.plugins || []));
   headers.set("x-sportslack-abilities", JSON.stringify(session?.abilities || {}));
 
@@ -272,6 +278,8 @@ export default {
               username: gate.session?.sub,
               name: gate.session?.name,
               role: gate.session?.role || "user",
+              assessRole: assessRoleForSession(gate.session),
+              isAdmin: gate.session?.role === "admin",
               plugins: gate.session?.plugins || [],
               abilities: gate.session?.abilities || {},
             },
