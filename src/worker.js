@@ -1,7 +1,9 @@
 const MOUNT_PATH = "/v4/assess";
 const PLUGIN_KEY = "assess";
 const CANONICAL_HOST = "ai.sportslack.com";
-const BACKEND_RETRY_DELAYS_MS = [250, 750, 1500];
+const BACKEND_RETRY_DELAYS_MS = [400, 1000, 2200, 4500, 7000];
+const BACKEND_TRANSIENT_STATUS = new Set([502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 530]);
+const BACKEND_PROXY_TIMEOUT_MS = 25000;
 const INDEX_HTML = `<!doctype html>
 <html lang="zh-CN">
   <head>
@@ -164,14 +166,57 @@ function sleep(ms) {
 
 function shouldRetryBackend(method, response) {
   return ["GET", "HEAD"].includes(method)
-    && [502, 503, 504].includes(response.status);
+    && BACKEND_TRANSIENT_STATUS.has(response.status);
 }
 
-function backendUnavailableResponse() {
+function backendUnavailableResponse(retried = false) {
   return json(
     { error: "后端连接短暂中断，请稍后重试。" },
-    { status: 503 },
+    {
+      status: 503,
+      headers: retried ? { "x-sportslack-backend-retry": "1" } : {},
+    },
   );
+}
+
+async function fetchWithTimeout(request, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(new Request(request, { signal: controller.signal }));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function checkBackendHealth(env) {
+  const baseUrl = backendBaseUrl(env);
+  if (!baseUrl) {
+    return { configured: false, ok: false, error: "ASSESS_BACKEND_ORIGIN is not configured." };
+  }
+
+  const started = Date.now();
+  try {
+    const target = new URL("/api/health", `${baseUrl}/`);
+    const response = await fetchWithTimeout(new Request(target.toString(), {
+      headers: { accept: "application/json" },
+    }), 6500);
+    const data = await response.json().catch(() => ({}));
+    return {
+      configured: true,
+      ok: response.ok && data.ok !== false,
+      status: response.status,
+      responseTimeMs: Date.now() - started,
+      data,
+    };
+  } catch {
+    return {
+      configured: true,
+      ok: false,
+      responseTimeMs: Date.now() - started,
+      error: "后端连接超时",
+    };
+  }
 }
 
 function serveIndexHtml() {
@@ -335,17 +380,20 @@ async function proxyToBackend(request, env, session) {
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
-      response = await fetch(new Request(target.toString(), init));
+      const backendRequest = new Request(target.toString(), init);
+      response = ["GET", "HEAD"].includes(request.method)
+        ? await fetchWithTimeout(backendRequest, BACKEND_PROXY_TIMEOUT_MS)
+        : await fetch(backendRequest);
       if (!shouldRetryBackend(request.method, response) || attempt === maxAttempts - 1) break;
     } catch {
-      if (attempt === maxAttempts - 1) return backendUnavailableResponse();
+      if (attempt === maxAttempts - 1) return backendUnavailableResponse(retried);
     }
     retried = true;
     await sleep(BACKEND_RETRY_DELAYS_MS[attempt] || 0);
   }
 
-  if (!response) return backendUnavailableResponse();
-  if (shouldRetryBackend(request.method, response)) return backendUnavailableResponse();
+  if (!response) return backendUnavailableResponse(retried);
+  if (shouldRetryBackend(request.method, response)) return backendUnavailableResponse(retried);
 
   const nextHeaders = new Headers(response.headers);
   const contentType = nextHeaders.get("content-type") || "";
@@ -409,14 +457,17 @@ export default {
     }
 
     if (url.pathname === `${MOUNT_PATH}/api/health`) {
+      const backend = await checkBackendHealth(env);
       return json({
-        ok: true,
+        ok: backend.configured ? backend.ok : true,
         plugin: PLUGIN_KEY,
         worker: "sportslack-assess",
         path: `${MOUNT_PATH}/`,
-        backendConfigured: Boolean(backendBaseUrl(env)),
+        backendConfigured: backend.configured,
+        backendOk: backend.ok,
+        backend,
         checkedAt: new Date().toISOString(),
-      });
+      }, { status: backend.configured && !backend.ok ? 503 : 200 });
     }
 
     const authCompatibility = await handleAuthCompatibility(request, env);
