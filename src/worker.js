@@ -7,7 +7,7 @@ const INDEX_HTML = `<!doctype html>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>在线考试系统</title>
-    <script type="module" crossorigin src="/v4/assess/assets/index-v4-centerfix-20260630.js"></script>
+    <script type="module" crossorigin src="/v4/assess/assets/index-v4-returncenter-20260630.js"></script>
     <link rel="stylesheet" crossorigin href="/v4/assess/assets/index-BhCOYPkP.css">
   </head>
   <body class="min-h-screen bg-background font-sans antialiased">
