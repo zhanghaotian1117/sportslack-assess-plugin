@@ -7,7 +7,7 @@ const INDEX_HTML = `<!doctype html>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>在线考试系统</title>
-    <script type="module" crossorigin src="/v4/assess/assets/index-v4-routefix-20260630.js"></script>
+    <script type="module" crossorigin src="/v4/assess/assets/index-v4-centerfix-20260630.js"></script>
     <link rel="stylesheet" crossorigin href="/v4/assess/assets/index-BhCOYPkP.css">
   </head>
   <body class="min-h-screen bg-background font-sans antialiased">
@@ -240,17 +240,10 @@ async function handleAuthCompatibility(request, env) {
   }
 
   if (path === `${MOUNT_PATH}/api/auth/password`) {
-    if (request.method === "GET") {
-      return json(
-        { error: "线上版本不提供查看明文密码，请在中台账号管理中修改密码。" },
-        { status: 403 },
-      );
-    }
-    if (request.method === "PUT") {
-      const response = await fetchCenter(request, env, "/api/me/password");
-      return centerJsonResponse(response);
-    }
-    return json({ error: "Method not allowed" }, { status: 405 });
+    return json(
+      { error: "账号和密码已统一由智能插件中台管理。" },
+      { status: 410 },
+    );
   }
 
   return null;
@@ -403,6 +396,12 @@ export default {
       if (url.pathname.startsWith(`${MOUNT_PATH}/api/`)) {
         if (url.pathname === `${MOUNT_PATH}/api/auth/session`) {
           return json({ ok: true, user: assessUserForSession(gate.session) });
+        }
+        if (url.pathname === `${MOUNT_PATH}/api/users` || url.pathname.startsWith(`${MOUNT_PATH}/api/users/`)) {
+          return json(
+            { error: "v4 用户管理已并入智能插件中台。" },
+            { status: 410 },
+          );
         }
         return proxyToBackend(request, env, gate.session);
       }

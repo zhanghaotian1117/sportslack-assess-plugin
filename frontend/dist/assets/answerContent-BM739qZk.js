@@ -1,4 +1,4 @@
-import{k as u,a4 as d,a0 as r}from"./index-LmbtwcHE.js";import{X as h}from"./x-DGnYDEyT.js";/**
+import{k as u,a4 as d,a0 as r}from"./index-v4-centerfix-20260630.js";import{X as h}from"./x-DGnYDEyT.js";/**
  * @license lucide-react v0.460.0 - ISC
  *
  * This source code is licensed under the ISC license.
