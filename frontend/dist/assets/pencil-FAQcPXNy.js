@@ -1,4 +1,4 @@
-import{k as a}from"./index-v4-returncenter-20260630.js";/**
+import{k as a}from"./index-v4-stability-20260630.js";/**
  * @license lucide-react v0.460.0 - ISC
  *
  * This source code is licensed under the ISC license.

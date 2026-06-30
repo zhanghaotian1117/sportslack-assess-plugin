@@ -1,13 +1,14 @@
 const MOUNT_PATH = "/v4/assess";
 const PLUGIN_KEY = "assess";
 const CANONICAL_HOST = "ai.sportslack.com";
+const BACKEND_RETRY_DELAYS_MS = [250, 750, 1500];
 const INDEX_HTML = `<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>在线考试系统</title>
-    <script type="module" crossorigin src="/v4/assess/assets/index-v4-returncenter-20260630.js"></script>
+    <script type="module" crossorigin src="/v4/assess/assets/index-v4-stability-20260630.js"></script>
     <link rel="stylesheet" crossorigin href="/v4/assess/assets/index-BhCOYPkP.css">
   </head>
   <body class="min-h-screen bg-background font-sans antialiased">
@@ -118,7 +119,7 @@ async function requirePlugin(request, env, plugin, ability = null) {
     if (url.pathname.startsWith(`${MOUNT_PATH}/api/`)) {
       return {
         response: Response.json(
-          { error: "Unauthenticated" },
+          { error: "登录已过期，请重新登录" },
           { status: 401, headers: { "cache-control": "no-store" } },
         ),
         session: null,
@@ -155,6 +156,22 @@ function isStaticAssetPath(pathname) {
   return pathname.startsWith(`${MOUNT_PATH}/`)
     && !pathname.startsWith(`${MOUNT_PATH}/api/`)
     && /\.[a-zA-Z0-9]+$/.test(pathname);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shouldRetryBackend(method, response) {
+  return ["GET", "HEAD"].includes(method)
+    && [502, 503, 504].includes(response.status);
+}
+
+function backendUnavailableResponse() {
+  return json(
+    { error: "后端连接短暂中断，请稍后重试。" },
+    { status: 503 },
+  );
 }
 
 function serveIndexHtml() {
@@ -234,7 +251,7 @@ async function handleAuthCompatibility(request, env) {
       return json({ error: "Method not allowed" }, { status: 405 });
     }
     const session = await currentSession(request, env);
-    if (!session) return json({ error: "Unauthenticated" }, { status: 401 });
+    if (!session) return json({ error: "登录已过期，请重新登录" }, { status: 401 });
     const user = assessUserForSession(session);
     return path.endsWith("/session") ? json({ ok: true, user }) : json(user);
   }
@@ -310,10 +327,30 @@ async function proxyToBackend(request, env, session) {
   };
   if (!["GET", "HEAD"].includes(request.method)) init.body = request.body;
 
-  const response = await fetch(new Request(target.toString(), init));
+  let response;
+  let retried = false;
+  const maxAttempts = ["GET", "HEAD"].includes(request.method)
+    ? BACKEND_RETRY_DELAYS_MS.length + 1
+    : 1;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      response = await fetch(new Request(target.toString(), init));
+      if (!shouldRetryBackend(request.method, response) || attempt === maxAttempts - 1) break;
+    } catch {
+      if (attempt === maxAttempts - 1) return backendUnavailableResponse();
+    }
+    retried = true;
+    await sleep(BACKEND_RETRY_DELAYS_MS[attempt] || 0);
+  }
+
+  if (!response) return backendUnavailableResponse();
+  if (shouldRetryBackend(request.method, response)) return backendUnavailableResponse();
+
   const nextHeaders = new Headers(response.headers);
   const contentType = nextHeaders.get("content-type") || "";
   if (contentType.includes("text/html")) nextHeaders.set("cache-control", "no-store");
+  if (retried) nextHeaders.set("x-sportslack-backend-retry", "1");
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
