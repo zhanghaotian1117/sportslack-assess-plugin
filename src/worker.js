@@ -7,7 +7,7 @@ const INDEX_HTML = `<!doctype html>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>在线考试系统</title>
-    <script type="module" crossorigin src="/v4/assess/assets/index-v4-authfix-20260629.js"></script>
+    <script type="module" crossorigin src="/v4/assess/assets/index-v4-routefix-20260630.js"></script>
     <link rel="stylesheet" crossorigin href="/v4/assess/assets/index-BhCOYPkP.css">
   </head>
   <body class="min-h-screen bg-background font-sans antialiased">
@@ -155,6 +155,15 @@ function isStaticAssetPath(pathname) {
   return pathname.startsWith(`${MOUNT_PATH}/`)
     && !pathname.startsWith(`${MOUNT_PATH}/api/`)
     && /\.[a-zA-Z0-9]+$/.test(pathname);
+}
+
+function serveIndexHtml() {
+  return new Response(INDEX_HTML, {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+    },
+  });
 }
 
 async function fetchCenter(request, env, path, options = {}) {
@@ -333,12 +342,7 @@ async function serveAsset(request, env) {
   const accept = request.headers.get("accept") || "";
   const looksLikeHtmlRoute = accept.includes("text/html") && !/\.[^/]+$/.test(assetUrl.pathname);
   if (looksLikeHtmlRoute) {
-    return new Response(INDEX_HTML, {
-      headers: {
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": "no-store",
-      },
-    });
+    return serveIndexHtml();
   }
 
   const response = await env.ASSETS.fetch(new Request(assetUrl.toString(), request));
@@ -401,6 +405,10 @@ export default {
           return json({ ok: true, user: assessUserForSession(gate.session) });
         }
         return proxyToBackend(request, env, gate.session);
+      }
+
+      if (!isStaticAssetPath(url.pathname)) {
+        return serveIndexHtml();
       }
 
       return serveAsset(request, env);
