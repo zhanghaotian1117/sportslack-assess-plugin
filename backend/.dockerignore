@@ -1,0 +1,9 @@
+node_modules
+dist
+exam.db
+exam.db-shm
+exam.db-wal
+backups
+.password-vault-key
+.env
+npm-debug.log*

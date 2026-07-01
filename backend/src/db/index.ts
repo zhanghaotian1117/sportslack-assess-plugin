@@ -6,9 +6,9 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const serverDir = path.join(__dirname, "..", "..");
-const dbPath = path.join(serverDir, "exam.db");
-const backupDir = path.join(serverDir, "backups");
-const vaultKeyPath = path.join(serverDir, ".password-vault-key");
+const dbPath = process.env.DATABASE_PATH || path.join(serverDir, "exam.db");
+const backupDir = process.env.DATABASE_BACKUP_DIR || path.join(serverDir, "backups");
+const vaultKeyPath = process.env.PASSWORD_VAULT_KEY_PATH || path.join(serverDir, ".password-vault-key");
 
 if (!fs.existsSync(dbPath)) {
   throw new Error(`Database file is missing: ${dbPath}. Refusing to create an empty database.`);

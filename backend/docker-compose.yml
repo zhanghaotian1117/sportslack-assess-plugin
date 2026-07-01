@@ -1,0 +1,16 @@
+services:
+  assess-backend:
+    build: .
+    container_name: sportslack-assess-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "8003"
+      ALLOW_LOCAL_AUTH: "false"
+      DATABASE_PATH: /data/exam.db
+      DATABASE_BACKUP_DIR: /data/backups
+      PASSWORD_VAULT_KEY_PATH: /data/.password-vault-key
+    ports:
+      - "127.0.0.1:8003:8003"
+    volumes:
+      - /opt/sportslack/assess-data:/data
