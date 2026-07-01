@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { gzipSync } from "node:zlib";
 import db from "../db/index.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/admin.js";
@@ -8,6 +9,7 @@ const router = Router();
 
 const VALID_TYPES = new Set(["true_false", "short_answer", "single_choice", "multiple_choice"]);
 const ANSWER_LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+const GZIP_THRESHOLD_BYTES = 1024 * 64;
 
 type ImportQuestionInput = {
   type?: string;
@@ -184,14 +186,31 @@ function insertQuestion(item: {
   );
 }
 
-router.get("/", authenticateToken, (_req: Request, res: Response) => {
+function sendJson(req: Request, res: Response, data: unknown) {
+  const body = JSON.stringify(data);
+  const acceptsGzip = /\bgzip\b/i.test(req.header("accept-encoding") || "");
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Vary", "Accept-Encoding");
+
+  if (acceptsGzip && Buffer.byteLength(body) >= GZIP_THRESHOLD_BYTES) {
+    const compressed = gzipSync(body);
+    res.setHeader("Content-Encoding", "gzip");
+    res.setHeader("Content-Length", String(compressed.byteLength));
+    res.send(compressed);
+    return;
+  }
+
+  res.send(body);
+}
+
+router.get("/", authenticateToken, (req: Request, res: Response) => {
   const questions = db.prepare("SELECT * FROM questions ORDER BY createdAt DESC").all();
-  res.json(questions);
+  sendJson(req, res, questions);
 });
 
 router.get("/category/:categoryId", authenticateToken, (req: Request, res: Response) => {
   const questions = db.prepare("SELECT * FROM questions WHERE categoryId = ? ORDER BY createdAt DESC").all(String(req.params.categoryId));
-  res.json(questions);
+  sendJson(req, res, questions);
 });
 
 router.post("/batch", authenticateToken, (req: Request, res: Response) => {
@@ -203,7 +222,7 @@ router.post("/batch", authenticateToken, (req: Request, res: Response) => {
 
   const placeholders = ids.map(() => "?").join(",");
   const questions = db.prepare(`SELECT * FROM questions WHERE id IN (${placeholders})`).all(...ids);
-  res.json(questions);
+  sendJson(req, res, questions);
 });
 
 router.post("/import", authenticateToken, requireAdmin, (req: Request, res: Response) => {

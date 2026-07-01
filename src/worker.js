@@ -1,9 +1,17 @@
 const MOUNT_PATH = "/v4/assess";
 const PLUGIN_KEY = "assess";
 const CANONICAL_HOST = "ai.sportslack.com";
-const BACKEND_RETRY_DELAYS_MS = [400, 1000, 2200, 4500, 7000];
+const BACKEND_RETRY_DELAYS_MS = [300, 900, 1800];
 const BACKEND_TRANSIENT_STATUS = new Set([502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 530]);
-const BACKEND_PROXY_TIMEOUT_MS = 25000;
+const BACKEND_PROXY_TIMEOUT_MS = 12000;
+const CACHEABLE_BACKEND_GET_PATHS = new Set([
+  "/questions",
+  "/categories",
+  "/tags",
+  "/exams",
+]);
+const BACKEND_CACHE_TTL_SECONDS = 600;
+const BACKEND_CACHE_STALE_SECONDS = 24 * 60 * 60;
 const INDEX_HTML = `<!doctype html>
 <html lang="zh-CN">
   <head>
@@ -167,6 +175,39 @@ function sleep(ms) {
 function shouldRetryBackend(method, response) {
   return ["GET", "HEAD"].includes(method)
     && BACKEND_TRANSIENT_STATUS.has(response.status);
+}
+
+function backendApiPath(pathname) {
+  const apiPath = pathname.startsWith(`${MOUNT_PATH}/api`)
+    ? pathname.slice(`${MOUNT_PATH}/api`.length) || "/"
+    : pathname;
+  return apiPath.replace(/\/+$/, "") || "/";
+}
+
+function isCacheableBackendGet(request, pathname) {
+  if (request.method !== "GET") return false;
+  const apiPath = backendApiPath(pathname);
+  if (CACHEABLE_BACKEND_GET_PATHS.has(apiPath)) return true;
+  return apiPath.startsWith("/questions/category/");
+}
+
+function backendCacheKey(request, session) {
+  const url = new URL(request.url);
+  url.searchParams.sort();
+  url.searchParams.set("__sportslack_cache_role", session?.role || "user");
+  return new Request(`${url.origin}${url.pathname}${url.search}`);
+}
+
+function cachedResponse(cached, retried = false) {
+  const headers = new Headers(cached.headers);
+  headers.set("x-sportslack-backend-cache", "HIT");
+  headers.set("cache-control", "no-store");
+  if (retried) headers.set("x-sportslack-backend-retry", "1");
+  return new Response(cached.body, {
+    status: cached.status,
+    statusText: cached.statusText,
+    headers,
+  });
 }
 
 function backendUnavailableResponse(retried = false) {
@@ -335,7 +376,7 @@ function abilityForAssess(pathname, method) {
   return "view";
 }
 
-async function proxyToBackend(request, env, session) {
+async function proxyToBackend(request, env, session, ctx) {
   const baseUrl = backendBaseUrl(env);
   if (!baseUrl) {
     return json(
@@ -352,6 +393,9 @@ async function proxyToBackend(request, env, session) {
   const backendPath = stripMountPath(url.pathname);
   const target = new URL(backendPath, `${baseUrl}/`);
   target.search = url.search;
+  const canUseCache = isCacheableBackendGet(request, url.pathname);
+  const cache = canUseCache ? caches.default : null;
+  const cacheKey = canUseCache ? backendCacheKey(request, session) : null;
 
   const headers = new Headers(request.headers);
   headers.set("x-forwarded-host", url.host);
@@ -386,24 +430,47 @@ async function proxyToBackend(request, env, session) {
         : await fetch(backendRequest);
       if (!shouldRetryBackend(request.method, response) || attempt === maxAttempts - 1) break;
     } catch {
-      if (attempt === maxAttempts - 1) return backendUnavailableResponse(retried);
+      if (attempt === maxAttempts - 1) {
+        const cached = cache && cacheKey ? await cache.match(cacheKey) : null;
+        if (cached) return cachedResponse(cached, retried);
+        return backendUnavailableResponse(retried);
+      }
     }
     retried = true;
     await sleep(BACKEND_RETRY_DELAYS_MS[attempt] || 0);
   }
 
-  if (!response) return backendUnavailableResponse(retried);
-  if (shouldRetryBackend(request.method, response)) return backendUnavailableResponse(retried);
+  if (!response || shouldRetryBackend(request.method, response)) {
+    const cached = cache && cacheKey ? await cache.match(cacheKey) : null;
+    if (cached) return cachedResponse(cached, retried);
+    return backendUnavailableResponse(retried);
+  }
 
   const nextHeaders = new Headers(response.headers);
   const contentType = nextHeaders.get("content-type") || "";
   if (contentType.includes("text/html")) nextHeaders.set("cache-control", "no-store");
   if (retried) nextHeaders.set("x-sportslack-backend-retry", "1");
-  return new Response(response.body, {
+
+  const finalResponse = new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
     headers: nextHeaders,
   });
+  if (cache && cacheKey && finalResponse.ok) {
+    const cacheHeaders = new Headers(finalResponse.headers);
+    cacheHeaders.set("cache-control", `public, max-age=${BACKEND_CACHE_TTL_SECONDS}, stale-while-revalidate=${BACKEND_CACHE_STALE_SECONDS}`);
+    cacheHeaders.set("x-sportslack-cache-stored-at", new Date().toISOString());
+    cacheHeaders.delete("set-cookie");
+    const cacheResponse = new Response(finalResponse.clone().body, {
+      status: finalResponse.status,
+      statusText: finalResponse.statusText,
+      headers: cacheHeaders,
+    });
+    const store = cache.put(cacheKey, cacheResponse);
+    if (ctx?.waitUntil) ctx.waitUntil(store);
+    else await store;
+  }
+  return finalResponse;
 }
 
 async function serveAsset(request, env) {
@@ -439,7 +506,7 @@ async function serveAsset(request, env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const canonicalRedirect = redirectToCanonicalHost(url);
     if (canonicalRedirect) return canonicalRedirect;
@@ -491,7 +558,7 @@ export default {
             { status: 410 },
           );
         }
-        return proxyToBackend(request, env, gate.session);
+        return proxyToBackend(request, env, gate.session, ctx);
       }
 
       if (!isStaticAssetPath(url.pathname)) {
