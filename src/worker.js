@@ -1,6 +1,12 @@
 const MOUNT_PATH = "/v4/assess";
 const PLUGIN_KEY = "assess";
 const CANONICAL_HOST = "ai.sportslack.com";
+const PLUGIN_CHROME = {
+  key: PLUGIN_KEY,
+  name: "在线考试",
+  section: "培训考核",
+  healthPath: `${MOUNT_PATH}/api/health`,
+};
 const BACKEND_RETRY_DELAYS_MS = [300, 900, 1800];
 const BACKEND_TRANSIENT_STATUS = new Set([502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 530]);
 const BACKEND_PROXY_TIMEOUT_MS = 12000;
@@ -12,6 +18,7 @@ const CACHEABLE_BACKEND_GET_PATHS = new Set([
 ]);
 const BACKEND_CACHE_TTL_SECONDS = 600;
 const BACKEND_CACHE_STALE_SECONDS = 24 * 60 * 60;
+const ASSESS_STUDENT_ABILITIES = new Set(["view", "take", "student"]);
 const INDEX_HTML = `<!doctype html>
 <html lang="zh-CN">
   <head>
@@ -64,7 +71,17 @@ function hasPlugin(session, plugin) {
 
 function hasAbility(session, plugin, ability) {
   if (!ability) return true;
-  return Boolean(session?.abilities?.[plugin]?.includes(ability));
+  const abilities = session?.abilities?.[plugin];
+  if (Array.isArray(abilities) && (abilities.includes(ability) || abilities.includes("access"))) {
+    return true;
+  }
+
+  if (plugin === PLUGIN_KEY && hasPlugin(session, plugin)) {
+    if (session?.role === "admin") return true;
+    return ASSESS_STUDENT_ABILITIES.has(ability);
+  }
+
+  return false;
 }
 
 function assessRoleForSession(session) {
@@ -260,13 +277,95 @@ async function checkBackendHealth(env) {
   }
 }
 
-function serveIndexHtml() {
-  return new Response(INDEX_HTML, {
+function serveIndexHtml(session = null) {
+  return new Response(injectPluginChromeHtml(INDEX_HTML, session), {
     headers: {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
     },
   });
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[char]));
+}
+
+function pluginChromeSnippet(meta, session) {
+  const user = escapeHtml(session?.name || session?.sub || "当前账号");
+  const name = escapeHtml(meta.name);
+  const section = escapeHtml(meta.section);
+  const healthPath = escapeHtml(meta.healthPath);
+  return `<style>
+    :root{--plugin-shell-height:58px}
+    body{padding-top:0!important}
+    .center-return-button,.center-back-link,a[aria-label="返回智能插件中台"],a[href="https://ai.sportslack.com/"]{display:none!important}
+    .sportslack-plugin-shell{position:relative;z-index:50;min-height:var(--plugin-shell-height);display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 18px;background:rgba(247,251,255,.96);border-bottom:1px solid #d8e4f4;box-shadow:0 8px 22px rgba(20,42,75,.06);backdrop-filter:blur(16px);font-family:Inter,"Noto Sans SC",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#14213d}
+    .sportslack-plugin-shell *{box-sizing:border-box}
+    .sportslack-plugin-brand{min-width:0;display:flex;align-items:center;gap:11px}
+    .sportslack-plugin-mark{width:34px;height:34px;display:grid;place-items:center;border-radius:8px;color:#fff;font-weight:900;background:linear-gradient(135deg,#246bfe,#04a7c9 58%,#16b892);box-shadow:0 10px 24px rgba(36,107,254,.22)}
+    .sportslack-plugin-title{min-width:0;display:grid;gap:2px}
+    .sportslack-plugin-title strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;line-height:1.2}
+    .sportslack-plugin-title span{color:#65748b;font-size:12px;font-weight:800}
+    .sportslack-plugin-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}
+    .sportslack-plugin-chip,.sportslack-plugin-link,.sportslack-plugin-status{min-height:34px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;font-size:12px;font-weight:850;white-space:nowrap}
+    .sportslack-plugin-chip{padding:0 10px;color:#28547c;background:#fff;border:1px solid #d1deef}
+    .sportslack-plugin-health-wrap{position:relative;display:inline-flex}
+    .sportslack-plugin-status{gap:6px;padding:0 10px;color:#087c63;background:rgba(22,184,146,.1);border:1px solid rgba(22,184,146,.22);cursor:pointer}
+    .sportslack-plugin-status[data-status="offline"]{color:#a42136;background:rgba(230,57,94,.1);border-color:rgba(230,57,94,.22)}
+    .sportslack-plugin-dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+    .sportslack-plugin-menu{position:absolute;right:0;top:calc(100% + 8px);min-width:132px;padding:6px;background:#fff;border:1px solid #d4e0f0;border-radius:8px;box-shadow:0 16px 36px rgba(18,35,62,.16);display:none;z-index:55}
+    .sportslack-plugin-health-wrap.open .sportslack-plugin-menu{display:grid}
+    .sportslack-plugin-logout{width:100%;min-height:34px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:#a42136;font-size:12px;font-weight:850;text-align:left;cursor:pointer}
+    .sportslack-plugin-logout:hover{background:rgba(230,57,94,.08)}
+    .sportslack-plugin-link{padding:0 12px;color:#fff;text-decoration:none;background:linear-gradient(135deg,#246bfe,#04a7c9);border:1px solid transparent}
+    @media(max-width:760px){:root{--plugin-shell-height:92px}.sportslack-plugin-shell{align-items:flex-start;flex-direction:column;padding:10px 12px}.sportslack-plugin-actions{width:100%;justify-content:flex-start;overflow-x:auto}.sportslack-plugin-chip,.sportslack-plugin-link,.sportslack-plugin-status{min-height:30px}.sportslack-plugin-menu{right:auto;left:0}}
+  </style><script>
+    (function(){
+      var meta={name:${JSON.stringify(name)},section:${JSON.stringify(section)},healthPath:${JSON.stringify(healthPath)},user:${JSON.stringify(user)}};
+      function hideLegacyCenterLinks(){
+        var items=document.querySelectorAll('a,button');
+        for(var i=0;i<items.length;i++){
+          var el=items[i];
+          if(el.closest('.sportslack-plugin-shell'))continue;
+          var text=(el.innerText||el.textContent||'').replace(/\s+/g,'').trim();
+          var aria=(el.getAttribute('aria-label')||'').replace(/\s+/g,'').trim();
+          var href=el.getAttribute('href')||'';
+          var isLegacy=/^(‹|<)?返回(智能)?插件?中台$/.test(text)||aria.indexOf('返回智能插件中台')>=0||(href==='https://ai.sportslack.com/'&&text.indexOf('返回')>=0);
+          if(isLegacy){el.style.display='none';el.setAttribute('data-plugin-hidden-center-return','true');}
+        }
+      }
+      function logout(){fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'}).finally(function(){location.href='/login';});}
+      function updateStatus(shell,ok){var el=shell.querySelector('[data-plugin-health-toggle]');el.dataset.status=ok?'online':'offline';el.innerHTML='<span class="sportslack-plugin-dot"></span>'+(ok?'在线':'异常');}
+      function mount(){
+        hideLegacyCenterLinks();
+        if(document.querySelector('.sportslack-plugin-shell'))return;
+        var shell=document.createElement('div');
+        shell.className='sportslack-plugin-shell';
+        shell.innerHTML='<div class="sportslack-plugin-brand"><div class="sportslack-plugin-mark">AI</div><div class="sportslack-plugin-title"><strong>'+meta.name+'</strong><span>'+meta.section+'</span></div></div><div class="sportslack-plugin-actions"><span class="sportslack-plugin-chip">'+meta.user+'</span><span class="sportslack-plugin-health-wrap"><button class="sportslack-plugin-status" data-plugin-health-toggle type="button" aria-haspopup="menu" aria-expanded="false"><span class="sportslack-plugin-dot"></span>检测中</button><span class="sportslack-plugin-menu" role="menu"><button class="sportslack-plugin-logout" data-plugin-logout type="button" role="menuitem">退出登录</button></span></span><a class="sportslack-plugin-link" href="/">返回中台</a></div>';
+        document.body.prepend(shell);
+        var wrap=shell.querySelector('.sportslack-plugin-health-wrap');
+        var toggle=shell.querySelector('[data-plugin-health-toggle]');
+        toggle.addEventListener('click',function(event){event.stopPropagation();var open=!wrap.classList.contains('open');wrap.classList.toggle('open',open);toggle.setAttribute('aria-expanded',open?'true':'false');});
+        document.addEventListener('click',function(){wrap.classList.remove('open');toggle.setAttribute('aria-expanded','false');});
+        shell.querySelector('[data-plugin-logout]').addEventListener('click',function(event){event.stopPropagation();logout();});
+        fetch(meta.healthPath,{cache:'no-store',credentials:'same-origin',headers:{accept:'application/json'}}).then(function(res){return res.json().then(function(data){return{ok:res.ok&&data.ok!==false&&data.backendOk!==false};});}).then(function(result){updateStatus(shell,result.ok);}).catch(function(){updateStatus(shell,false);});
+        setTimeout(hideLegacyCenterLinks,0);
+        if(window.MutationObserver){new MutationObserver(hideLegacyCenterLinks).observe(document.body,{childList:true,subtree:true});}
+      }
+      if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
+    })();
+  </script>`;
+}
+
+function injectPluginChromeHtml(html, session) {
+  const snippet = pluginChromeSnippet(PLUGIN_CHROME, session);
+  return html.includes("</head>") ? html.replace("</head>", `${snippet}</head>`) : `${snippet}${html}`;
 }
 
 async function fetchCenter(request, env, path, options = {}) {
@@ -367,9 +466,10 @@ function abilityForAssess(pathname, method) {
   }
 
   if (apiPath.startsWith("/admin") || apiPath.startsWith("/users")) return "manage";
-  if (apiPath.startsWith("/categories") || apiPath.startsWith("/tags")) return "manage";
+  if (apiPath.startsWith("/categories") || apiPath.startsWith("/tags")) return "take";
   if (apiPath.startsWith("/questions/export") || apiPath.startsWith("/questions/import")) return "manage";
-  if (apiPath.startsWith("/results") || apiPath.startsWith("/report")) return "grade";
+  if (apiPath.startsWith("/results")) return "take";
+  if (apiPath.startsWith("/report")) return "grade";
   if (apiPath.startsWith("/gradings") || apiPath.startsWith("/grading")) return "grade";
   if (apiPath.startsWith("/exam") || apiPath.startsWith("/question")) return "take";
   if (apiPath.startsWith("/practice") || apiPath.startsWith("/mistakes")) return "take";
@@ -542,7 +642,7 @@ export default {
 
     if (url.pathname === `${MOUNT_PATH}/` || url.pathname.startsWith(`${MOUNT_PATH}/`)) {
       if (isStaticAssetPath(url.pathname)) {
-        return serveAsset(request, env);
+          return serveAsset(request, env);
       }
 
       const gate = await requirePlugin(request, env, PLUGIN_KEY, abilityForAssess(url.pathname, request.method));
@@ -562,7 +662,7 @@ export default {
       }
 
       if (!isStaticAssetPath(url.pathname)) {
-        return serveIndexHtml();
+        return serveIndexHtml(gate.session);
       }
 
       return serveAsset(request, env);
