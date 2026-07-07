@@ -25,8 +25,8 @@ const INDEX_HTML = `<!doctype html>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>在线考试系统</title>
-    <script type="module" crossorigin src="/v4/assess/assets/index-v4-stability-20260630.js"></script>
-    <link rel="stylesheet" crossorigin href="/v4/assess/assets/index-BhCOYPkP.css">
+    <script type="module" crossorigin src="/v4/assess/assets/index-DWfVB_0V.js"></script>
+    <link rel="stylesheet" crossorigin href="/v4/assess/assets/index-B-PrBYfe.css">
   </head>
   <body class="min-h-screen bg-background font-sans antialiased">
     <div id="root"></div>
@@ -305,6 +305,7 @@ function pluginChromeSnippet(meta, session) {
     :root{--plugin-shell-height:58px}
     body{padding-top:0!important}
     .center-return-button,.center-back-link,a[aria-label="返回智能插件中台"],a[href="https://ai.sportslack.com/"]{display:none!important}
+    aside .border-t.border-gray-700.px-4.py-4,a[href="/admin/users"],a[href="/v4/assess/admin/users"],button[title="查看或修改密码"]{display:none!important}
     .sportslack-plugin-shell{position:relative;z-index:50;min-height:var(--plugin-shell-height);display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 18px;background:rgba(247,251,255,.96);border-bottom:1px solid #d8e4f4;box-shadow:0 8px 22px rgba(20,42,75,.06);backdrop-filter:blur(16px);font-family:Inter,"Noto Sans SC",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#14213d}
     .sportslack-plugin-shell *{box-sizing:border-box}
     .sportslack-plugin-brand{min-width:0;display:flex;align-items:center;gap:11px}
@@ -324,6 +325,9 @@ function pluginChromeSnippet(meta, session) {
     .sportslack-plugin-logout{width:100%;min-height:34px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:#a42136;font-size:12px;font-weight:850;text-align:left;cursor:pointer}
     .sportslack-plugin-logout:hover{background:rgba(230,57,94,.08)}
     .sportslack-plugin-link{padding:0 12px;color:#fff;text-decoration:none;background:linear-gradient(135deg,#246bfe,#04a7c9);border:1px solid transparent}
+    #v4-question-image-lightbox{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.78);padding:24px;cursor:zoom-out}
+    #v4-question-image-lightbox img{max-width:92vw;max-height:88vh;object-fit:contain;border-radius:10px;box-shadow:0 24px 80px rgba(0,0,0,.35);background:#fff;cursor:default}
+    #v4-question-image-lightbox button{position:absolute;top:18px;right:18px;border:0;border-radius:8px;background:#fff;color:#111827;padding:8px 12px;font-size:14px;font-weight:700;box-shadow:0 8px 28px rgba(0,0,0,.25);cursor:pointer}
     @media(max-width:760px){:root{--plugin-shell-height:92px}.sportslack-plugin-shell{align-items:flex-start;flex-direction:column;padding:10px 12px}.sportslack-plugin-actions{width:100%;justify-content:flex-start;overflow-x:auto}.sportslack-plugin-chip,.sportslack-plugin-link,.sportslack-plugin-status{min-height:30px}.sportslack-plugin-menu{right:auto;left:0}}
   </style><script>
     (function(){
@@ -340,10 +344,61 @@ function pluginChromeSnippet(meta, session) {
           if(isLegacy){el.style.display='none';el.setAttribute('data-plugin-hidden-center-return','true');}
         }
       }
+      function hideLegacyExamControls(){
+        var footers=document.querySelectorAll('aside .border-t.border-gray-700.px-4.py-4');
+        for(var i=0;i<footers.length;i++){footers[i].style.display='none';footers[i].setAttribute('data-plugin-hidden-exam-footer','true');}
+        var items=document.querySelectorAll('a,button');
+        for(var j=0;j<items.length;j++){
+          var el=items[j];
+          if(el.closest('.sportslack-plugin-shell'))continue;
+          var text=(el.innerText||el.textContent||'').replace(/\s+/g,'').trim();
+          var title=(el.getAttribute('title')||'').replace(/\s+/g,'').trim();
+          var href=el.getAttribute('href')||'';
+          if(text==='用户管理'||title==='查看或修改密码'||href==='/admin/users'||href==='/v4/assess/admin/users'){
+            el.style.display='none';
+            el.setAttribute('data-plugin-hidden-exam-control','true');
+          }
+        }
+      }
+      function closeQuestionImageLightbox(){
+        var box=document.getElementById('v4-question-image-lightbox');
+        if(box)box.remove();
+        document.removeEventListener('keydown',onQuestionImageKeydown);
+      }
+      function onQuestionImageKeydown(event){
+        if(event.key==='Escape')closeQuestionImageLightbox();
+      }
+      function openQuestionImageLightbox(src,alt){
+        closeQuestionImageLightbox();
+        var box=document.createElement('div');
+        var img=document.createElement('img');
+        var close=document.createElement('button');
+        box.id='v4-question-image-lightbox';
+        img.src=src;
+        img.alt=alt||'题目图片预览';
+        close.type='button';
+        close.textContent='关闭';
+        box.addEventListener('click',closeQuestionImageLightbox);
+        img.addEventListener('click',function(event){event.stopPropagation();});
+        close.addEventListener('click',function(event){event.stopPropagation();closeQuestionImageLightbox();});
+        box.appendChild(img);
+        box.appendChild(close);
+        document.body.appendChild(box);
+        document.addEventListener('keydown',onQuestionImageKeydown);
+      }
+      function wireQuestionImages(){
+        var images=document.querySelectorAll('img[src^="data:image/"].h-24.w-24.object-cover');
+        for(var i=0;i<images.length;i++){
+          images[i].style.cursor='zoom-in';
+          images[i].title=images[i].title||'点击放大图片';
+        }
+      }
       function logout(){fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'}).finally(function(){location.href='/login';});}
       function updateStatus(shell,ok){var el=shell.querySelector('[data-plugin-health-toggle]');el.dataset.status=ok?'online':'offline';el.innerHTML='<span class="sportslack-plugin-dot"></span>'+(ok?'在线':'异常');}
       function mount(){
         hideLegacyCenterLinks();
+        hideLegacyExamControls();
+        wireQuestionImages();
         if(document.querySelector('.sportslack-plugin-shell'))return;
         var shell=document.createElement('div');
         shell.className='sportslack-plugin-shell';
@@ -354,9 +409,19 @@ function pluginChromeSnippet(meta, session) {
         toggle.addEventListener('click',function(event){event.stopPropagation();var open=!wrap.classList.contains('open');wrap.classList.toggle('open',open);toggle.setAttribute('aria-expanded',open?'true':'false');});
         document.addEventListener('click',function(){wrap.classList.remove('open');toggle.setAttribute('aria-expanded','false');});
         shell.querySelector('[data-plugin-logout]').addEventListener('click',function(event){event.stopPropagation();logout();});
+        document.addEventListener('click',function(event){
+          var target=event.target;
+          var img=target&&target.closest?target.closest('img[src^="data:image/"]'):null;
+          if(!img||!img.classList.contains('h-24')||!img.classList.contains('w-24')||!img.classList.contains('object-cover'))return;
+          event.preventDefault();
+          event.stopPropagation();
+          openQuestionImageLightbox(img.src,img.alt||'题目图片预览');
+        },true);
         fetch(meta.healthPath,{cache:'no-store',credentials:'same-origin',headers:{accept:'application/json'}}).then(function(res){return res.json().then(function(data){return{ok:res.ok&&data.ok!==false&&data.backendOk!==false};});}).then(function(result){updateStatus(shell,result.ok);}).catch(function(){updateStatus(shell,false);});
         setTimeout(hideLegacyCenterLinks,0);
-        if(window.MutationObserver){new MutationObserver(hideLegacyCenterLinks).observe(document.body,{childList:true,subtree:true});}
+        setTimeout(hideLegacyExamControls,0);
+        setTimeout(wireQuestionImages,0);
+        if(window.MutationObserver){new MutationObserver(function(){hideLegacyCenterLinks();hideLegacyExamControls();wireQuestionImages();}).observe(document.body,{childList:true,subtree:true});}
       }
       if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
     })();
@@ -621,6 +686,11 @@ export default {
       const login = new URL("/login", url.origin);
       login.searchParams.set("next", `${MOUNT_PATH}/`);
       return Response.redirect(login.toString(), 302);
+    }
+
+    if (url.pathname === `${MOUNT_PATH}/admin/users` || url.pathname.startsWith(`${MOUNT_PATH}/admin/users/`)) {
+      const next = new URL(`${MOUNT_PATH}/`, url.origin);
+      return Response.redirect(next.toString(), 302);
     }
 
     if (url.pathname === `${MOUNT_PATH}/api/health`) {
